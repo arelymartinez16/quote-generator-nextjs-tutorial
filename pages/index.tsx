@@ -6,7 +6,7 @@ import Clouds1 from "../assets/cloud-and-thunder.png";
 import Clouds2 from '../assets/cloudy-weather.png'
 import { useEffect, useState } from 'react';
 import { API } from 'aws-amplify';
-import { quoteQueryName } from '@/src/graphql/queries';
+import { generateAQuote, quoteQueryName } from '@/src/graphql/queries';
 import { GraphQLResult } from '@aws-amplify/api-graphql'
 import QuoteGeneratorModal from '@/components/QuoteGenerator';
 import { error } from 'console';
@@ -19,6 +19,14 @@ interface UpdateQuoteInfoData {
   createdAt: string;
   updatedAt: string;
 }
+
+// interface for out appsync <> lambda JSON response
+interface GenerateAQuoteData {
+  generateAQuote: {
+    statusCode: number;
+    headers: { [key: string]: string }
+  }
+} 
 
 // type guard for fetch function
 function isGraphQLResultForQuotesQueryName(response: any): response is GraphQLResult<{
@@ -71,6 +79,8 @@ export default function Home() {
   // functions for quote generator modal
   const handleCloseGenerator = () => {
     setOpenGenerator(false);
+    setProcessingQuote(false);
+    setQuoteReceived(null);
   }
 
   const handleOpenGenerator = async (e: React.SyntheticEvent) => {
@@ -79,12 +89,33 @@ export default function Home() {
     setProcessingQuote(true);
     try {
       // run lambda function
+      const runFunction = "runFunction";
+      const runFunctionStringified = JSON.stringify(runFunction);
+      const response = await API.graphql<GenerateAQuoteData>({
+        query: generateAQuote,
+        authMode: "AWS_IAM",
+        variables: {
+          input: runFunctionStringified,
+        },
+      });
+      const responseStringified = JSON.stringify(response);
+      const responseRestringified = JSON.stringify(responseStringified);
+      const bodyIndex = responseRestringified.indexOf("body=") + 5;
+      const bodyAndBase64 = responseRestringified.substring(bodyIndex);
+      const bodyArray = bodyAndBase64.split(",");
+      const body = bodyArray[0];
+      console.log(body);
+      setQuoteReceived(body);
 
+      // end state:
+      setProcessingQuote(false);
 
+      // fetch if any new quotes were generated from counter
+      updateQuoteInfo();
       // setProcessingQuote(false);
-      setTimeout(() => {
-        setProcessingQuote(false);
-      }, 3000)
+      // setTimeout(() => {
+      //   setProcessingQuote(false);
+      // }, 3000)
     } catch (err) {
       console.log("error generating quote:", err);
       setProcessingQuote(false);
